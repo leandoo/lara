@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Instalador Lara Pro para Termux - Versão 8.6.3
-# Correção completa para erros de módulos Node.js
+# Instalador Lara Pro para Termux - Versão 8.6.4
+# Correção para problemas de npm no Termux
 # URL RAW: https://raw.githubusercontent.com/leandoo/lara/main/install-lara.sh
 
 # Configurações
@@ -33,20 +33,19 @@ Y
 pkg update -y && pkg upgrade -y
 check_error "Falha ao atualizar pacotes"
 
-# 2. Instalar dependências básicas
+# 2. Instalar dependências básicas (sem npm global)
 echo -e "${YELLOW}[2/7] Instalando dependências básicas...${NC}"
 pkg install -y nodejs git curl wget python libxml2 libxslt openssl termux-exec
 check_error "Falha ao instalar dependências básicas"
 
-# 3. Configurar npm
-echo -e "${YELLOW}[3/7] Configurando npm...${NC}"
-npm install -g npm@latest
+# 3. Configurar projeto Node.js local
+echo -e "${YELLOW}[3/7] Configurando projeto local...${NC}"
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 npm init -y --silent
-check_error "Falha ao configurar npm"
+check_error "Falha ao configurar projeto Node.js"
 
-# 4. Instalar dependências LOCAIS
+# 4. Instalar dependências LOCAIS usando npm do Termux
 echo -e "${YELLOW}[4/7] Instalando dependências Node.js...${NC}"
 npm install --save @google/generative-ai axios express glob crypto child_process
 check_error "Falha ao instalar dependências Node.js"
@@ -104,15 +103,15 @@ echo -e "  lara vem       # Iniciar a Lara"
 echo -e "  lara ajuda     # Ver comandos disponíveis"
 echo -e "\n${YELLOW}Dicas importantes:${NC}"
 echo -e "1. Feche e reabra o Termux"
-echo -e "2. Execute ${CYAN}termux-setup-storage${NC} se precisar de acesso a arquivos externos"
+echo -e "2. Execute ${CYAN}termux-setup-storage${NC} para acesso a arquivos externos"
 echo -e "3. Para desinstalar: ${CYAN}rm -rf $INSTALL_DIR $BIN_PATH${NC}"
 
-# Verificação opcional
-echo -e "\n${YELLOW}Verificando instalação...${NC}"
+# Verificação das dependências
+echo -e "\n${YELLOW}Verificando dependências...${NC}"
 cd "$INSTALL_DIR"
-if node -e "require('@google/generative-ai')"; then
-  echo -e "${GREEN}✓ Todas dependências estão funcionais${NC}"
+if node -e "require('@google/generative-ai'); console.log('✓ Todas dependências OK')" 2>/dev/null; then
+  echo -e "${GREEN}✓ Instalação validada com sucesso!${NC}"
 else
-  echo -e "${RED}× Alguma dependência falhou - Execute manualmente:"
-  echo -e "cd $INSTALL_DIR && npm install${NC}"
+  echo -e "${RED}× Problema encontrado nas dependências. Execute:${NC}"
+  echo -e "cd $INSTALL_DIR && npm install"
 fi
