@@ -27,6 +27,24 @@ function colorize(text, color) {
 }
 
 // =============================================
+// NOVA FUNÇÃO: Verificar atualizações no GitHub
+// =============================================
+const checkForUpdates = async () => {
+    try {
+        const GITHUB_RAW_URL = "https://raw.githubusercontent.com/leandoo/lara/main/lara.js";
+        const remoteResponse = await axios.get(GITHUB_RAW_URL);
+        const remoteContent = remoteResponse.data;
+        const remoteHash = crypto.createHash('sha256').update(remoteContent).digest('hex');
+        const localContent = fs.readFileSync(__filename, 'utf-8');
+        const localHash = crypto.createHash('sha256').update(localContent).digest('hex');
+        return remoteHash !== localHash;
+    } catch (error) {
+        console.error('Erro ao verificar atualizações:', error);
+        return false;
+    }
+};
+
+// =============================================
 // CONFIGURAÇÕES PRINCIPAIS
 // =============================================
 const config = {
@@ -1419,9 +1437,8 @@ async function processMegaCode(action, content, context, extension) {
                     prompt = `Analise este código ${extension} e explique seu funcionamento:\n\n${content}\n\nContexto: ${context}\n\nDestaque:\n1. Fluxo principal\n2. Funções críticas\n3. Possíveis issues`;
                     break;
                 case 'refactor':
-                    case 'atualizar':
-    prompt = `Atualize este código ${extension} seguindo as melhores práticas:\n\n${content}\n\nContexto: ${context}\n\nRegras:\n1. Mantenha a funcionalidade\n2. Melhore legibilidade\n3. Documente alterações`;
-    break;
+                    prompt = `Refatore este código ${extension} seguindo as melhores práticas:\n\n${content}\n\nContexto: ${context}\n\nRegras:\n1. Mantenha a funcionalidade\n2. Melhore legibilidade\n3. Documente alterações`;
+                    break;
                 case 'generate':
                     prompt = `Gere um código ${extension} com base nesta descrição:\n\n${content}\n\nContexto: ${context}\n\nRequisitos:\n1. Código completo\n2. Comentários explicativos\n3. Tratamento de erros`;
                     break;
@@ -1983,6 +2000,11 @@ class LaraInterface {
                 return;
             }
 
+            if (command === '@whoami') {
+                this.printMessage('system', `🔑 Seu usuário no chat P2P é: ${colorize(`@${os.userInfo().username}`, 'cyan')}`);
+                return;
+            }
+
             const codeGenMatch = command.match(/^@code\s+gere\s+em\s+\/ext\s+(\.[a-z]+)\s+(.+)$/i);
             if (codeGenMatch) {
                 const [, ext, description] = codeGenMatch;
@@ -2052,12 +2074,12 @@ class LaraInterface {
                     break;
 
                 case '@atualizar':
-    if (this.currentMode !== 'code') {
-        this.printMessage('error', '❌ Primeiro entre no modo código com @code');
-        return;
-    }
-    this.printMessage('system', '🔄 Preparado para atualizar código (use /xsend para confirmar)');
-    break;
+                    if (this.currentMode !== 'code') {
+                        this.printMessage('error', '❌ Primeiro entre no modo código com @code');
+                        return;
+                    }
+                    this.printMessage('system', '🔄 Preparado para atualizar código (use /xsend para confirmar)');
+                    break;
 
                 case '@generate':
                     this.currentMode = 'generate';
@@ -2128,6 +2150,7 @@ class LaraInterface {
 │  @generate   - Gerar código a partir de descrição    │
 │  @analyze    - Analisar código (no modo código)      │
 │  @atualizar  - Atualizar código (no modo código)     │
+│  @whoami     - Mostrar seu usuário P2P               │
 │  @reset      - Limpar todas as memórias e resetar    │
 │  @web        - Acessar interface web                 │
 │  @status     - Ver status do sistema                 │
@@ -2141,6 +2164,8 @@ class LaraInterface {
 │  /conectar @user - Conectar a um usuário P2P         │
 │  /chat       - Mostrar ajuda do chat P2P             │
 │  /sair       - Sair do chat P2P                      │
+│  /atualizar  - Verificar atualizações                │
+│  /reiniciar  - Reiniciar após atualização            │
 └──────────────────────────────────────────────────────┘
 `, 'cyan'));
         this.rl.prompt();
@@ -2246,11 +2271,12 @@ class LaraInterface {
     }
 
     _determineProcessingAction() {
-    if (this.currentMode === 'generate') return 'generate';
-    if (this.currentMode === 'text') return 'text';
-    if (this.currentMode === 'update') return 'atualizar';
-    return this.context.lastOperation?.action || 'analyze';
-}
+        if (this.currentMode === 'generate') return 'generate';
+        if (this.currentMode === 'text') return 'text';
+        if (this.currentMode === 'update') return 'atualizar';
+        return this.context.lastOperation?.action || 'analyze';
+    }
+
     _handleProcessingResult(result, action) {
         let resultPath = result.path || path.join(
             this.debugMode ? config.baseDir : OUTPUT_DIR,
@@ -2425,15 +2451,16 @@ class LaraInterface {
     }
 
     getActionResultMessage(action) {
-    const messages = {
-        analyze: "🔍 Análise concluída!",
-        atualizar: "🔄 Código atualizado com sucesso!",
-        generate: "✨ Código gerado com sucesso!",
-        text: "📝 Texto gerado com sucesso!",
-        update: "⚡ Código atualizado com sucesso!"
-    };
-    return messages[action] || "✅ Operação concluída!";
-}
+        const messages = {
+            analyze: "🔍 Análise concluída!",
+            atualizar: "🔄 Código atualizado com sucesso!",
+            generate: "✨ Código gerado com sucesso!",
+            text: "📝 Texto gerado com sucesso!",
+            update: "⚡ Código atualizado com sucesso!"
+        };
+        return messages[action] || "✅ Operação concluída!";
+    }
+
     async showSystemStatus() {
         try {
             const userContext = await this.cacheSystem.getUserContext(this.userId);
@@ -2716,6 +2743,13 @@ async function main() {
         if (!await initializeGemini()) {
             throw new Error('Falha na inicialização do Gemini');
         }
+
+        // Verifica atualizações a cada 1 hora
+        setInterval(async () => {
+            if (await checkForUpdates()) {
+                console.log(colorize('\n🔔 ATUALIZAÇÃO DISPONÍVEL! Digite /atualizar para aplicar.', 'yellow'));
+            }
+        }, 3600000); // 1 hora = 3600000 ms
 
         server.listen(config.WEB_PORT, () => {
             console.log(colorize(`
