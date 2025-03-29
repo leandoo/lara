@@ -2141,7 +2141,7 @@ class LaraInterface {
     }
 
     showHelp() {
-        console.log(colorize(`
+    console.log(colorize(`
 ┌──────────────────────────────────────────────────────┐
 │                   AJUDA RÁPIDA                       │
 ├──────────────────────────────────────────────────────┤
@@ -2150,7 +2150,7 @@ class LaraInterface {
 │  @generate   - Gerar código a partir de descrição    │
 │  @analyze    - Analisar código (no modo código)      │
 │  @atualizar  - Atualizar código (no modo código)     │
-│  @whoami     - Mostrar seu usuário P2P               │
+│  @whoami     - Mostrar seu nome de usuário no chat P2P │
 │  @reset      - Limpar todas as memórias e resetar    │
 │  @web        - Acessar interface web                 │
 │  @status     - Ver status do sistema                 │
@@ -2164,12 +2164,12 @@ class LaraInterface {
 │  /conectar @user - Conectar a um usuário P2P         │
 │  /chat       - Mostrar ajuda do chat P2P             │
 │  /sair       - Sair do chat P2P                      │
-│  /atualizar  - Verificar atualizações                │
+│  /atualizar  - Verificar atualizações disponíveis    │
 │  /reiniciar  - Reiniciar após atualização            │
 └──────────────────────────────────────────────────────┘
 `, 'cyan'));
-        this.rl.prompt();
-    }
+    this.rl.prompt();
+}
 
     handleInput(input) {
         try {
