@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Instalador Lara Pro para Termux - Versão 8.6.2
+# Instalador Lara Pro para Termux - Versão 8.6.3
+# Correção completa para erros de módulos Node.js
 # URL RAW: https://raw.githubusercontent.com/leandoo/lara/main/install-lara.sh
 
 # Configurações
@@ -23,36 +24,40 @@ check_error() {
   fi
 }
 
-# 1. Atualizar pacotes e corrigir mirrors
-echo -e "${YELLOW}[1/6] Configurando repositórios do Termux...${NC}"
+# 1. Configurar ambiente Termux
+echo -e "${YELLOW}[1/7] Configurando ambiente Termux...${NC}"
 termux-change-repo <<< "1
 1
 Y
 "
-
-# 2. Instalar dependências essenciais
-echo -e "${YELLOW}[2/6] Instalando dependências básicas...${NC}"
 pkg update -y && pkg upgrade -y
+check_error "Falha ao atualizar pacotes"
+
+# 2. Instalar dependências básicas
+echo -e "${YELLOW}[2/7] Instalando dependências básicas...${NC}"
 pkg install -y nodejs git curl wget python libxml2 libxslt openssl termux-exec
 check_error "Falha ao instalar dependências básicas"
 
-# 3. Instalar dependências Node.js globais
-echo -e "${YELLOW}[3/6] Instalando dependências Node.js...${NC}"
+# 3. Configurar npm
+echo -e "${YELLOW}[3/7] Configurando npm...${NC}"
 npm install -g npm@latest
-npm install -g @google/generative-ai axios express glob crypto child_process
+mkdir -p "$INSTALL_DIR"
+cd "$INSTALL_DIR"
+npm init -y --silent
+check_error "Falha ao configurar npm"
+
+# 4. Instalar dependências LOCAIS
+echo -e "${YELLOW}[4/7] Instalando dependências Node.js...${NC}"
+npm install --save @google/generative-ai axios express glob crypto child_process
 check_error "Falha ao instalar dependências Node.js"
 
-# 4. Criar estrutura de diretórios
-echo -e "${YELLOW}[4/6] Criando estrutura de diretórios...${NC}"
-mkdir -p "$INSTALL_DIR"/{output,chunks,backups,memory,recovery}
-check_error "Falha ao criar diretórios"
-
-# 5. Baixar e configurar o Lara
-echo -e "${YELLOW}[5/6] Baixando e configurando Lara Pro...${NC}"
+# 5. Baixar Lara Pro
+echo -e "${YELLOW}[5/7] Baixando Lara Pro...${NC}"
 curl -sSL "$LARA_JS_URL" -o "$INSTALL_DIR/lara.js"
 check_error "Falha ao baixar o arquivo principal"
 
-# Criar arquivo de reações padrão
+# 6. Criar arquivos de suporte
+echo -e "${YELLOW}[6/7] Criando arquivos de suporte...${NC}"
 cat > "$INSTALL_DIR/reacoes.json" << 'EOF'
 {
     "feliz": {
@@ -73,28 +78,41 @@ cat > "$INSTALL_DIR/reacoes.json" << 'EOF'
 }
 EOF
 
-# 6. Criar comando global
-echo -e "${YELLOW}[6/6] Configurando comando 'lara'...${NC}"
-cat > "$BIN_PATH" << EOF
+mkdir -p "$INSTALL_DIR"/{output,chunks,backups,memory,recovery}
+
+# 7. Criar comando global
+echo -e "${YELLOW}[7/7] Configurando comando global...${NC}"
+cat > "$BIN_PATH" << 'EOF'
 #!/bin/bash
-node "$INSTALL_DIR/lara.js" "\$@"
+cd "$HOME/.lara-pro"
+node lara.js "$@"
 EOF
 
 chmod +x "$BIN_PATH"
 check_error "Falha ao criar comando global"
 
-# Configurar PATH se necessário
-if [[ ":\$PATH:" != *":$PREFIX/bin:"* ]]; then
-  echo 'export PATH="$PREFIX/bin:\$PATH"' >> "$HOME/.bashrc"
+# Configurar PATH
+if [[ ":$PATH:" != *":$PREFIX/bin:"* ]]; then
+  echo 'export PATH="$PREFIX/bin:$PATH"' >> "$HOME/.bashrc"
+  source "$HOME/.bashrc"
 fi
 
-# Resultado final
+# Verificação final
 echo -e "\n${GREEN}✔ Instalação concluída com sucesso!${NC}"
-echo -e "\nComo usar:"
-echo -e "  ${CYAN}lara vem${NC}       # Para iniciar a Lara"
-echo -e "  ${CYAN}lara ajuda${NC}     # Para ver os comandos disponíveis"
-echo -e "\nDiretório de instalação: ${CYAN}$INSTALL_DIR${NC}"
-echo -e "\nRecomendações:"
-echo -e "1. Feche e reabra o Termux para garantir que o PATH esteja atualizado"
+echo -e "\n${CYAN}Como usar:${NC}"
+echo -e "  lara vem       # Iniciar a Lara"
+echo -e "  lara ajuda     # Ver comandos disponíveis"
+echo -e "\n${YELLOW}Dicas importantes:${NC}"
+echo -e "1. Feche e reabra o Termux"
 echo -e "2. Execute ${CYAN}termux-setup-storage${NC} se precisar de acesso a arquivos externos"
 echo -e "3. Para desinstalar: ${CYAN}rm -rf $INSTALL_DIR $BIN_PATH${NC}"
+
+# Verificação opcional
+echo -e "\n${YELLOW}Verificando instalação...${NC}"
+cd "$INSTALL_DIR"
+if node -e "require('@google/generative-ai')"; then
+  echo -e "${GREEN}✓ Todas dependências estão funcionais${NC}"
+else
+  echo -e "${RED}× Alguma dependência falhou - Execute manualmente:"
+  echo -e "cd $INSTALL_DIR && npm install${NC}"
+fi
