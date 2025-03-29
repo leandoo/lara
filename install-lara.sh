@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Instalador Automático Lara Pro
+# Instalador Automático Lara Pro para Termux
 # Cria comando 'lara vem' para iniciar
 
 # Configurações
 INSTALL_DIR="$HOME/.lara-pro"
-LARA_URL="https://raw.githubusercontent.com/leandoo/lara/main/lara.js"  # Substitua pelo seu URL
+LARA_URL="https://raw.githubusercontent.com/leandoo/lara/main/lara.js"  # URL do arquivo principal
 
 # Cores
 RED='\033[0;31m'
@@ -21,13 +21,15 @@ check_error() {
   fi
 }
 
-# 1. Verificar/Instalar Node.js
-echo -e "${YELLOW}Verificando Node.js...${NC}"
+# 1. Atualizar pacotes e instalar dependências
+echo -e "${YELLOW}Atualizando pacotes e instalando dependências...${NC}"
+pkg update -y && pkg upgrade -y
+pkg install -y nodejs git curl
+
+# Verificar se o Node.js foi instalado
 if ! command -v node &> /dev/null; then
-  echo -e "${YELLOW}Instalando Node.js...${NC}"
-  curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-  sudo apt-get install -y nodejs
-  check_error "Falha ao instalar Node.js"
+  echo -e "${RED}Node.js não foi instalado corretamente.${NC}"
+  exit 1
 fi
 
 # 2. Criar estrutura de diretórios
@@ -49,28 +51,45 @@ EOF
 
 chmod +x "$INSTALL_DIR/bin/lara"
 
-# 5. Criar alias 'lara vem'
-echo -e "${YELLOW}Configurando comando 'lara vem'...${NC}"
-cat >> "$HOME/.bashrc" << EOF
+# 5. Configurar para Termux (usando .bash_profile)
+echo -e "${YELLOW}Configurando para Termux...${NC}"
 
-# Lara Pro Alias
-alias lara="$HOME/.lara-pro/bin/lara"
+# Criar .bash_profile se não existir
+touch "$HOME/.bash_profile"
+
+# Adicionar ao PATH e criar alias
+if ! grep -q ".lara-pro/bin" "$HOME/.bash_profile"; then
+  cat >> "$HOME/.bash_profile" << EOF
+
+# Lara Pro
+export PATH="\$HOME/.lara-pro/bin:\$PATH"
+alias lara="\$HOME/.lara-pro/bin/lara"
 EOF
+fi
 
-# 6. Instalar dependências
+# 6. Instalar dependências Node.js
 echo -e "${YELLOW}Instalando dependências...${NC}"
 npm install --prefix "$INSTALL_DIR" @google/generative-ai axios express
 check_error "Falha ao instalar dependências"
 
-# 7. Configurar PATH
-echo -e "${YELLOW}Atualizando PATH...${NC}"
-if [[ ":$PATH:" != *":$HOME/.lara-pro/bin:"* ]]; then
-  echo 'export PATH="$HOME/.lara-pro/bin:$PATH"' >> "$HOME/.bashrc"
-fi
+# 7. Criar link simbólico no diretório bin do Termux
+echo -e "${YELLOW}Criando link no Termux...${NC}"
+mkdir -p "$PREFIX/bin"
+ln -sf "$HOME/.lara-pro/bin/lara" "$PREFIX/bin/lara" 2>/dev/null || {
+  echo -e "${YELLOW}Não foi possível criar link simbólico, usando PATH alternativo${NC}"
+}
 
-# Carregar as alterações
-source "$HOME/.bashrc"
+# 8. Carregar as alterações
+source "$HOME/.bash_profile"
 
-echo -e "${GREEN}Instalação concluída com sucesso!${NC}"
+echo -e "\n${GREEN}Instalação concluída com sucesso!${NC}"
 echo -e "Agora você pode iniciar o Lara com: ${YELLOW}lara vem${NC}"
-echo -e "Reinicie o terminal ou execute: ${YELLOW}source ~/.bashrc${NC}"
+echo -e "Se não funcionar imediatamente, feche e reabra o Termux."
+
+# Teste final
+if command -v lara &> /dev/null; then
+  echo -e "${GREEN}Verificação: Comando 'lara' instalado com sucesso!${NC}"
+else
+  echo -e "${YELLOW}Aviso: O comando 'lara' não está no PATH. Tente executar com:${NC}"
+  echo -e "  ~/.lara-pro/bin/lara vem"
+fi
