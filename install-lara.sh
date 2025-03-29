@@ -1,11 +1,12 @@
 #!/bin/bash
 
-# Instalador Automático Lara Pro para Termux
+# Instalador Automático Lara Pro para Termux (versão Git)
 # Cria comando 'lara vem' para iniciar
 
 # Configurações
-INSTALL_DIR="$HOME/.lara-pro"
-LARA_URL="https://raw.githubusercontent.com/leandoo/lara/main/lara.js"  # URL do arquivo principal
+GIT_REPO="https://github.com/leandoo/lara.git"  # URL do repositório
+INSTALL_DIR="$HOME/lara-pro"                   # Diretório de instalação
+BIN_DIR="$HOME/.local/bin"                     # Diretório para o executável
 
 # Cores
 RED='\033[0;31m'
@@ -22,74 +23,49 @@ check_error() {
 }
 
 # 1. Atualizar pacotes e instalar dependências
-echo -e "${YELLOW}Atualizando pacotes e instalando dependências...${NC}"
+echo -e "${YELLOW}[1/5] Instalando dependências...${NC}"
 pkg update -y && pkg upgrade -y
 pkg install -y nodejs git curl
 
-# Verificar se o Node.js foi instalado
-if ! command -v node &> /dev/null; then
-  echo -e "${RED}Node.js não foi instalado corretamente.${NC}"
-  exit 1
+# 2. Clonar repositório
+echo -e "${YELLOW}[2/5] Clonando repositório...${NC}"
+if [ -d "$INSTALL_DIR" ]; then
+  echo -e "${YELLOW}Diretório já existe, atualizando...${NC}"
+  cd "$INSTALL_DIR"
+  git pull origin main
+else
+  git clone "$GIT_REPO" "$INSTALL_DIR"
 fi
+check_error "Falha ao clonar/atualizar repositório"
 
-# 2. Criar estrutura de diretórios
-echo -e "${YELLOW}Criando estrutura...${NC}"
-mkdir -p "$INSTALL_DIR"/{bin,lib}
-check_error "Falha ao criar diretórios"
+# 3. Instalar dependências Node.js
+echo -e "${YELLOW}[3/5] Instalando dependências Node.js...${NC}"
+cd "$INSTALL_DIR"
+npm install
+check_error "Falha ao instalar dependências Node.js"
 
-# 3. Baixar o arquivo principal
-echo -e "${YELLOW}Baixando Lara Pro...${NC}"
-curl -sSL "$LARA_URL" -o "$INSTALL_DIR/lib/lara.js"
-check_error "Falha ao baixar o arquivo principal"
-
-# 4. Criar executável 'lara'
-echo -e "${YELLOW}Criando comando 'lara'...${NC}"
-cat > "$INSTALL_DIR/bin/lara" << 'EOF'
+# 4. Criar executável global
+echo -e "${YELLOW}[4/5] Criando comando global 'lara'...${NC}"
+mkdir -p "$BIN_DIR"
+cat > "$BIN_DIR/lara" << EOF
 #!/bin/bash
-node "$HOME/.lara-pro/lib/lara.js" "$@"
+node "$INSTALL_DIR/lara.js" "\$@"
 EOF
 
-chmod +x "$INSTALL_DIR/bin/lara"
+chmod +x "$BIN_DIR/lara"
 
-# 5. Configurar para Termux (usando .bash_profile)
-echo -e "${YELLOW}Configurando para Termux...${NC}"
-
-# Criar .bash_profile se não existir
-touch "$HOME/.bash_profile"
-
-# Adicionar ao PATH e criar alias
-if ! grep -q ".lara-pro/bin" "$HOME/.bash_profile"; then
-  cat >> "$HOME/.bash_profile" << EOF
-
-# Lara Pro
-export PATH="\$HOME/.lara-pro/bin:\$PATH"
-alias lara="\$HOME/.lara-pro/bin/lara"
-EOF
+# 5. Configurar PATH (para Termux)
+echo -e "${YELLOW}[5/5] Configurando ambiente...${NC}"
+if ! grep -q ".local/bin" "$HOME/.bash_profile"; then
+  echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bash_profile"
 fi
 
-# 6. Instalar dependências Node.js
-echo -e "${YELLOW}Instalando dependências...${NC}"
-npm install --prefix "$INSTALL_DIR" @google/generative-ai axios express
-check_error "Falha ao instalar dependências"
-
-# 7. Criar link simbólico no diretório bin do Termux
-echo -e "${YELLOW}Criando link no Termux...${NC}"
-mkdir -p "$PREFIX/bin"
-ln -sf "$HOME/.lara-pro/bin/lara" "$PREFIX/bin/lara" 2>/dev/null || {
-  echo -e "${YELLOW}Não foi possível criar link simbólico, usando PATH alternativo${NC}"
-}
-
-# 8. Carregar as alterações
 source "$HOME/.bash_profile"
 
+# Verificação final
 echo -e "\n${GREEN}Instalação concluída com sucesso!${NC}"
-echo -e "Agora você pode iniciar o Lara com: ${YELLOW}lara vem${NC}"
-echo -e "Se não funcionar imediatamente, feche e reabra o Termux."
-
-# Teste final
-if command -v lara &> /dev/null; then
-  echo -e "${GREEN}Verificação: Comando 'lara' instalado com sucesso!${NC}"
-else
-  echo -e "${YELLOW}Aviso: O comando 'lara' não está no PATH. Tente executar com:${NC}"
-  echo -e "  ~/.lara-pro/bin/lara vem"
-fi
+echo -e "Diretório do projeto: ${YELLOW}$INSTALL_DIR${NC}"
+echo -e "\nAgora você pode usar:"
+echo -e "  ${YELLOW}lara vem${NC}       # Para iniciar"
+echo -e "  ${YELLOW}cd $INSTALL_DIR${NC} # Para acessar os arquivos"
+echo -e "\nSe o comando não for reconhecido imediatamente, feche e reabra o Termux."
