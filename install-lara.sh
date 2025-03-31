@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Instalador Lara Pro para Termux - Versão 8.6.6 FIXED
+# Instalador Lara Pro para Termux - Versão 8.6.7 FIXED
 
 # Configurações
 INSTALL_DIR="$HOME/.lara-pro"
@@ -14,32 +14,56 @@ YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-# Função melhorada
-safe_check() {
+# Função de tratamento de erros melhorada
+safe_run() {
+  echo -e "${YELLOW}Executando: $1${NC}"
+  eval "$1"
   if [ $? -ne 0 ]; then
-    echo -e "${RED}Erro: $1${NC}"
-    echo -e "${YELLOW}Tentando continuar em 3 segundos...${NC}"
-    sleep 3
+    echo -e "${RED}Erro ao executar: $1${NC}"
+    echo -e "${YELLOW}Tentando continuar em 5 segundos...${NC}"
+    sleep 5
     return 1
   fi
   return 0
 }
 
-# 1. Atualização básica (sem termux-change-repo)
-echo -e "${YELLOW}[1/7] Atualizando pacotes...${NC}"
-timeout 60 pkg update -y && timeout 60 pkg upgrade -y
-safe_check "Atualização de pacotes" || exit 1
+# 1. Corrigir possíveis problemas do dpkg
+echo -e "${YELLOW}[1/8] Verificando sistema...${NC}"
+safe_run "dpkg --configure -a"
+safe_run "apt-get install -f -y"
 
-# 2. Instalar dependências em lote
-echo -e "${YELLOW}[2/7] Instalando dependências...${NC}"
-pkg install -y nodejs git curl wget python libxml2 libxslt openssl termux-exec
-safe_check "Instalação de pacotes" || exit 1
+# 2. Atualização básica com fallback
+echo -e "${YELLOW}[2/8] Atualizando pacotes...${NC}"
+safe_run "pkg update -y && pkg upgrade -y" || {
+  echo -e "${YELLOW}Tentando método alternativo...${NC}"
+  safe_run "apt update && apt upgrade -y"
+}
 
-# 3. Configuração Node.js otimizada
-echo -e "${YELLOW}[3/7] Preparando Node.js...${NC}"
-mkdir -p "$INSTALL_DIR" && cd "$INSTALL_DIR"
+# 3. Instalar dependências essenciais em etapas
+echo -e "${YELLOW}[3/8] Instalando dependências básicas...${NC}"
+for pkg in nodejs git curl wget; do
+  safe_run "pkg install -y $pkg" || safe_run "apt install -y $pkg"
+done
 
-# Package.json essencial
+# 4. Dependências secundárias
+echo -e "${YELLOW}[4/8] Instalando dependências adicionais...${NC}"
+for pkg in python libxml2 libxslt openssl termux-exec; do
+  safe_run "pkg install -y $pkg" || {
+    echo -e "${YELLOW}Pacote $pkg opcional, continuando...${NC}"
+    sleep 2
+  }
+done
+
+# 5. Configuração Node.js
+echo -e "${YELLOW}[5/8] Preparando ambiente Node.js...${NC}"
+mkdir -p "$INSTALL_DIR" && cd "$INSTALL_DIR" || exit 1
+
+# Package.json com fallback
+if ! command -v npm &> /dev/null; then
+  echo -e "${RED}NPM não encontrado! Instalando...${NC}"
+  safe_run "pkg install -y nodejs npm"
+fi
+
 cat > package.json << 'EOF'
 {
   "name": "lara-pro",
@@ -51,29 +75,57 @@ cat > package.json << 'EOF'
 }
 EOF
 
-# 4. Instalação paralela de dependências
-echo -e "${YELLOW}[4/7] Instalando módulos Node...${NC}"
-npm install --save @google/generative-ai axios express glob crypto child_process
-safe_check "Instalação de módulos" || exit 1
+# 6. Instalação de módulos com retry
+echo -e "${YELLOW}[6/8] Instalando módulos Node...${NC}"
+for attempt in {1..3}; do
+  npm install --save @google/generative-ai axios express glob crypto child_process && break
+  echo -e "${YELLOW}Tentativa $attempt falhou, tentando novamente em 5 segundos...${NC}"
+  sleep 5
+done
 
-# 5. Download com fallback
-echo -e "${YELLOW}[5/7] Baixando Lara Pro...${NC}"
-if ! curl -sSL "$LARA_JS_URL" -o "$INSTALL_DIR/lara.js"; then
-  wget -q "$LARA_JS_URL" -O "$INSTALL_DIR/lara.js"
+# 7. Download do Lara com múltiplos fallbacks
+echo -e "${YELLOW}[7/8] Baixando Lara Pro...${NC}"
+download_success=false
+for tool in curl wget node; do
+  if command -v $tool &> /dev/null; then
+    case $tool in
+      curl)
+        if curl -sSL "$LARA_JS_URL" -o "$INSTALL_DIR/lara.js"; then
+          download_success=true
+          break
+        fi
+        ;;
+      wget)
+        if wget -q "$LARA_JS_URL" -O "$INSTALL_DIR/lara.js"; then
+          download_success=true
+          break
+        fi
+        ;;
+      node)
+        if node -e "require('https').get('$LARA_JS_URL', (r) => r.pipe(require('fs').createWriteStream('$INSTALL_DIR/lara.js')))"; then
+          download_success=true
+          break
+        fi
+        ;;
+    esac
+  fi
+done
+
+if [ "$download_success" = false ]; then
+  echo -e "${RED}Falha ao baixar o Lara Pro${NC}"
+  exit 1
 fi
-safe_check "Download do Lara" || exit 1
 
-# 6. Estrutura de diretórios
-echo -e "${YELLOW}[6/7] Criando estrutura...${NC}"
+# 8. Configuração final
+echo -e "${YELLOW}[8/8] Configurando ambiente...${NC}"
 mkdir -p "$INSTALL_DIR"/{output,chunks,backups,memory,recovery}
 
-# 7. Comando global simplificado
-echo -e "${YELLOW}[7/7] Configurando...${NC}"
 cat > "$BIN_PATH" << 'EOF'
 #!/bin/bash
 cd "$HOME/.lara-pro" && node lara.js "$@"
 EOF
 chmod +x "$BIN_PATH"
 
-echo -e "${GREEN}✔ Instalação concluída!${NC}"
-echo -e "\nUse: ${CYAN}lara${NC} para iniciar"
+echo -e "\n${GREEN}✔ Instalação concluída com sucesso!${NC}"
+echo -e "\nIniciar com: ${CYAN}lara${NC}"
+echo -e "Acesse a interface web: ${CYAN}http://localhost:5001${NC}"
