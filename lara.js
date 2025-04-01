@@ -2400,6 +2400,12 @@ class LaraInterface {
         console.log(`${prefixes[sender] || ''} ${message}`);
         this.rl.prompt();
     }
+    
+   // Dentro da classe LaraInterface, adicione:
+handleInput(input) {
+    this.inputBuffer = input;
+    this.processChatBuffer();
+}
 
     showBanner() {
         console.log(colorize(`
@@ -2441,59 +2447,59 @@ class LaraInterface {
     }
 
     setupEventListeners() {
-        this.rl.on('line', async (input) => {
-            this.lastActivity = Date.now();
-            
-            try {
-                if (this.isPasting) {
-                    if (input.trim() === config.buffer.multilineDelimiter) {
-                        this.isPasting = false;
-                        await this.handlePastedContent(this.pasteBuffer.join('\n'));
-                        this.pasteBuffer = [];
-                        this.showStatusLine();
-                        return;
-                    }
-                    this.pasteBuffer.push(input);
-                    this.printMessage('system', `���� Recebido ${this.pasteBuffer.length} linhas... (Digite ~~~END~~~ para finalizar)`);
-                    return;
-                }
-
-                if (input.trim() === '/paste') {
-                    this.isPasting = true;
+    this.rl.on('line', async (input) => {
+        this.lastActivity = Date.now();
+        
+        try {
+            if (this.isPasting) {
+                if (input.trim() === config.buffer.multilineDelimiter) {
+                    this.isPasting = false;
+                    await this.handlePastedContent(this.pasteBuffer.join('\n'));
                     this.pasteBuffer = [];
-                    this.printMessage('system', '📋 Modo colagem ativado. Cole seu texto e digite ~~~END~~~ para finalizar');
+                    this.showStatusLine();
                     return;
                 }
-
-                if (input.startsWith('@')) {
-                    await this.handleCommand(input.trim());
-                } else if (input.trim() === '/xsend') {
-                    await this.handleXsend();
-                } else if (input.trim().startsWith('/ext')) {
-                    this.handleExtensionCommand(input.trim());
-                } else if (input.trim().startsWith('/')) {
-                    chatUI.handleCommand(input.trim(), this);
-                } else {
-                    this.handleInput(input);
-                }
-                this.showStatusLine();
-            } catch (error) {
-                this.printMessage('error', `Erro ao processar entrada: ${error.message}`);
+                this.pasteBuffer.push(input);
+                this.printMessage('system', `📋 Recebido ${this.pasteBuffer.length} linhas... (Digite ~~~END~~~ para finalizar)`);
+                return;
             }
-        });
 
-        process.on('SIGINT', () => {
-            this.printMessage('system', 'Salvando contexto e saindo...');
-            saveContext(this.context);
-            process.exit(0);
-        });
-
-        this.rl.on('history', (history) => {
-            if (history.length > 1000) {
-                this.rl.history = history.slice(-1000);
+            if (input.trim() === '/paste') {
+                this.isPasting = true;
+                this.pasteBuffer = [];
+                this.printMessage('system', '📋 Modo colagem ativado. Cole seu texto e digite ~~~END~~~ para finalizar');
+                return;
             }
-        });
-    }
+
+            if (input.startsWith('@')) {
+                await this.handleCommand(input.trim());
+            } else if (input.trim() === '/xsend') {
+                await this.handleXsend();
+            } else if (input.trim().startsWith('/ext')) {
+                this.handleExtensionCommand(input.trim());
+            } else if (input.trim().startsWith('/')) {
+                await chatUI.handleCommand(input.trim(), this);
+            } else {
+                this.handleInput(input);
+            }
+            this.showStatusLine();
+        } catch (error) {
+            this.printMessage('error', `Erro ao processar entrada: ${error.message}`);
+        }
+    });
+
+    process.on('SIGINT', () => {
+        this.printMessage('system', 'Salvando contexto e saindo...');
+        saveContext(this.context);
+        process.exit(0);
+    });
+
+    this.rl.on('history', (history) => {
+        if (history.length > 1000) {
+            this.rl.history = history.slice(-1000);
+        }
+    });
+}
 
     handleExtensionCommand(command) {
         try {
