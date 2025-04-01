@@ -7,7 +7,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
 const child_process = require('child_process');
 const crypto = require('crypto');
-const glob = require('glob');
+const { glob } = require('glob');
 
 // =============================================
 // FUNÇÕES UTILITÁRIAS
@@ -78,7 +78,6 @@ const config = {
             cannabis: true,
             emotions: true
         },
-        reactions: path.join(os.homedir(), "LaraPro", "reacoes.json"),
         memoryFile: path.join(os.homedir(), "LaraPro", "memory.json")
     },
     processing: {
@@ -431,36 +430,36 @@ class NetworkBootstrap {
         return Array.from(activePeers);
     }
 
-async fetchPartialDHT() {
-    try {
-        const randomPeerQuery = "REDE_LARA:GET_DHT_FRAGMENT:" + crypto.randomBytes(8).toString('hex');
-        
-        const response = await model.generateContent({
-            contents: [{
-                parts: [{ text: randomPeerQuery }]
-            }]
-        });
+    async fetchPartialDHT() {
+        try {
+            const randomPeerQuery = "REDE_LARA:GET_DHT_FRAGMENT:" + crypto.randomBytes(8).toString('hex');
+            
+            const response = await model.generateContent({
+                contents: [{
+                    parts: [{ text: randomPeerQuery }]
+                }]
+            });
 
-        const responseText = response.response.text();
-        
-        // Verifica se parece ser JSON antes de parsear
-        if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
-            try {
-                return new Map(Object.entries(JSON.parse(responseText)));
-            } catch (e) {
-                console.error('Resposta não era JSON válido:', responseText.substring(0, 100));
-                return new Map();
+            const responseText = response.response.text();
+            
+            // Verifica se parece ser JSON antes de parsear
+            if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+                try {
+                    return new Map(Object.entries(JSON.parse(responseText)));
+                } catch (e) {
+                    console.error('Resposta não era JSON válido:', responseText.substring(0, 100));
+                    return new Map();
+                }
             }
+            
+            // Se não for JSON, retorna mapa vazio
+            return new Map();
+            
+        } catch (e) {
+            console.error('Erro ao obter DHT:', e);
+            return new Map();
         }
-        
-        // Se não for JSON, retorna mapa vazio
-        return new Map();
-        
-    } catch (e) {
-        console.error('Erro ao obter DHT:', e);
-        return new Map();
     }
-}
 
     mergeDatabase(newData) {
         newData.forEach((value, key) => {
@@ -649,14 +648,14 @@ class DistributedPeerDatabase {
     }
 
     publishToDHT(key, value) {
-    const hash = crypto.createHash('sha256').update(key).digest('hex');
-    this.DHT.set(hash, value);
-    
-    // Modificado para ser silencioso - remova se quiser desativar completamente
-    if (this.debugMode) {
-        console.log(colorize(`🌐 [DEBUG] Publicado na DHT: ${key}`, 'gray'));
+        const hash = crypto.createHash('sha256').update(key).digest('hex');
+        this.DHT.set(hash, value);
+        
+        // Modificado para ser silencioso - remova se quiser desativar completamente
+        if (this.debugMode) {
+            console.log(colorize(`🌐 [DEBUG] Publicado na DHT: ${key}`, 'gray'));
+        }
     }
-}
 
     async queryDHT(key) {
         const hash = crypto.createHash('sha256').update(key).digest('hex');
@@ -696,75 +695,75 @@ class DistributedPeerDatabase {
     }
 
     async syncWithNetwork() {
-    // Atualiza o status deste peer
-    this.localPeer.lastSeen = Date.now();
-    
-    // Publica na DHT apenas se as mensagens de rede estiverem ativadas
-    if (this.laraInterface?.showNetworkMessages) {
-        this.publishToDHT(this.localPeer.username, {
-            peerId: this.localPeer.peerId,
-            publicKey: this.localPeer.publicKey,
-            lastSeen: this.localPeer.lastSeen
-        });
-    }
-    
-    // Verifica status dos contatos silenciosamente
-    for (const [username, contact] of this.localContacts) {
-        if (username === this.localPeer.username) continue;
+        // Atualiza o status deste peer
+        this.localPeer.lastSeen = Date.now();
         
-        try {
-            const peerInfo = await this.queryDHT(username);
-            if (peerInfo) {
-                const isOnline = (Date.now() - peerInfo.lastSeen) < 300000; // 5 minutos
-                contact.status = isOnline ? 'online' : 'offline';
-                contact.lastSeen = peerInfo.lastSeen;
-                
-                // Entregar mensagens pendentes mesmo com mensagens silenciadas
-                if (isOnline) {
-                    await this.deliverPendingMessages(username);
+        // Publica na DHT apenas se as mensagens de rede estiverem ativadas
+        if (this.laraInterface?.showNetworkMessages) {
+            this.publishToDHT(this.localPeer.username, {
+                peerId: this.localPeer.peerId,
+                publicKey: this.localPeer.publicKey,
+                lastSeen: this.localPeer.lastSeen
+            });
+        }
+        
+        // Verifica status dos contatos silenciosamente
+        for (const [username, contact] of this.localContacts) {
+            if (username === this.localPeer.username) continue;
+            
+            try {
+                const peerInfo = await this.queryDHT(username);
+                if (peerInfo) {
+                    const isOnline = (Date.now() - peerInfo.lastSeen) < 300000; // 5 minutos
+                    contact.status = isOnline ? 'online' : 'offline';
+                    contact.lastSeen = peerInfo.lastSeen;
+                    
+                    // Entregar mensagens pendentes mesmo com mensagens silenciadas
+                    if (isOnline) {
+                        await this.deliverPendingMessages(username);
+                    }
+                }
+            } catch (error) {
+                // Log silencioso em modo produção
+                if (this.laraInterface?.debugMode) {
+                    console.error(`[DEBUG] Erro ao verificar ${username}:`, error);
                 }
             }
-        } catch (error) {
-            // Log silencioso em modo produção
-            if (this.laraInterface?.debugMode) {
-                console.error(`[DEBUG] Erro ao verificar ${username}:`, error);
-            }
         }
+        
+        // Atualiza dados locais sem notificações
+        await this.saveLocalContacts();
+        this.savePeerCache();
     }
-    
-    // Atualiza dados locais sem notificações
-    await this.saveLocalContacts();
-    this.savePeerCache();
-}
 
-async deliverPendingMessages(username) {
-    if (!this.messageQueue.has(username)) return;
-    
-    const messages = this.messageQueue.get(username);
-    while (messages.length > 0) {
-        const message = messages.shift();
-        try {
-            await this.sendMessageDirect(username, message);
-            
-            // Mostra confirmação apenas se as mensagens estiverem ativadas
-            if (this.laraInterface?.showNetworkMessages) {
-                this.laraInterface.printMessage('system', 
-                    `✉️ Mensagem entregue para ${username}`);
+    async deliverPendingMessages(username) {
+        if (!this.messageQueue.has(username)) return;
+        
+        const messages = this.messageQueue.get(username);
+        while (messages.length > 0) {
+            const message = messages.shift();
+            try {
+                await this.sendMessageDirect(username, message);
+                
+                // Mostra confirmação apenas se as mensagens estiverem ativadas
+                if (this.laraInterface?.showNetworkMessages) {
+                    this.laraInterface.printMessage('system', 
+                        `✉️ Mensagem entregue para ${username}`);
+                }
+            } catch (error) {
+                // Recoloca a mensagem na fila se houver erro
+                messages.unshift(message);
+                if (this.laraInterface?.debugMode) {
+                    console.error(`[DEBUG] Falha na entrega para ${username}:`, error);
+                }
+                break;
             }
-        } catch (error) {
-            // Recoloca a mensagem na fila se houver erro
-            messages.unshift(message);
-            if (this.laraInterface?.debugMode) {
-                console.error(`[DEBUG] Falha na entrega para ${username}:`, error);
-            }
-            break;
+        }
+        
+        if (messages.length === 0) {
+            this.messageQueue.delete(username);
         }
     }
-    
-    if (messages.length === 0) {
-        this.messageQueue.delete(username);
-    }
-}
 
     async sendMessageDirect(username, message) {
         try {
@@ -915,23 +914,24 @@ class PeerChat {
     }
 
     updatePeerStatusDisplay() {
-    // Verifica se as mensagens de peer estão desativadas
-    if (!this.laraInterface.showPeerStatus) return;
+        // Verifica se as mensagens de peer estão desativadas
+        if (!this.laraInterface.showPeerStatus) return;
 
-    const onlinePeers = Array.from(this.peers.entries())
-        .filter(([_, data]) => data.status === 'online')
-        .map(([username, _]) => username);
-    
-    const offlinePeers = Array.from(this.peers.entries())
-        .filter(([_, data]) => data.status === 'offline' && data.isContact)
-        .map(([username, _]) => username);
+        const onlinePeers = Array.from(this.peers.entries())
+            .filter(([_, data]) => data.status === 'online')
+            .map(([username, _]) => username);
+        
+        const offlinePeers = Array.from(this.peers.entries())
+            .filter(([_, data]) => data.status === 'offline' && data.isContact)
+            .map(([username, _]) => username);
 
-    // Mostra apenas se estiver em debug mode
-    if (this.laraInterface.debugMode) {
-        this.laraInterface.printMessage('debug', 
-            `[REDE] ${onlinePeers.length} online, ${offlinePeers.length} offline`);
+        // Mostra apenas se estiver em debug mode
+        if (this.laraInterface.debugMode) {
+            this.laraInterface.printMessage('debug', 
+                `[REDE] ${onlinePeers.length} online, ${offlinePeers.length} offline`);
+        }
     }
-}
+
     async connectTo(username) {
         if (!username.startsWith('@')) {
             username = '@' + username;
@@ -1115,15 +1115,7 @@ const chatUI = {
                     laraInterface.printMessage('error', `❌ Erro: ${err.message}`);
                     
                     if (err.message.includes('não encontrado')) {
-                        const answer = await laraInterface.askQuestion(`Deseja adicionar ${username} aos seus contatos? (s/n)`);
-                        if (answer.toLowerCase() === 's') {
-                            try {
-                                const result = await chatSystem.peerDB.addContact(username);
-                                laraInterface.printMessage('system', `✅ ${result.message}`);
-                            } catch (addError) {
-                                laraInterface.printMessage('error', `❌ Falha ao adicionar: ${addError.message}`);
-                            }
-                        }
+                        laraInterface.printMessage('system', `Usuário ${username} não encontrado. Use /buscar para procurar.`);
                     }
                 }
                 break;
@@ -1293,7 +1285,7 @@ class RateLimiter {
 
                         const waitTime = 33000 * this.retryCount;
                         console.log(colorize(`⚠️ Erro 429. Tentativa ${this.retryCount}/${this.MAX_RETRIES}. Aguarde ${waitTime/1000}s...`, 'red'));
-                        await new Promise(res => setTimeout(res, waitTime));
+                        await new Promise(r => setTimeout(r, waitTime));
                         return processRequest();
                     }
                     reject(error);
@@ -1662,7 +1654,7 @@ class FileBackup {
             const content = fs.readFileSync(backupPath, 'utf-8');
             const currentChecksum = crypto.createHash('sha256').update(content).digest('hex');
             
-            for (const [_, backupInfo] of this.backupIndex) {
+            for (const [_, backupInfo] of this.backupIndex.entries()) {
                 if (backupInfo.path === backupPath) {
                     return {
                         valid: backupInfo.checksum === currentChecksum,
@@ -1958,110 +1950,6 @@ class EnhancedCacheSystem {
         };
     }
 }
-
-// =============================================
-// SISTEMA DE REAÇÕES
-// =============================================
-class ReactionSystem {
-    constructor() {
-        this.reactionsFile = config.personality.reactions;
-        const reactionsDir = path.dirname(this.reactionsFile);
-        if (!fs.existsSync(reactionsDir)) {
-            fs.mkdirSync(reactionsDir, { recursive: true });
-        }
-        this.reactions = this.loadReactions();
-        this.usageStats = {};
-    }
-
-    loadReactions() {
-        try {
-            if (!fs.existsSync(this.reactionsFile)) {
-                const defaultReactions = {
-                    "feliz": {
-                        "tipo": "ascii",
-                        "conteudo": " (＾▽＾) ",
-                        "tags": ["feliz", "alegre", "content"]
-                    },
-                    "triste": {
-                        "tipo": "ascii",
-                        "conteudo": " (╥_╥) ",
-                        "tags": ["triste", "depre"]
-                    },
-                    "safado": {
-                        "tipo": "ascii",
-                        "conteudo": " ( ͡° ͜ʖ ͡°) ",
-                        "tags": ["safado", "nsfw", "sexo"]
-                    }
-                };
-                fs.writeFileSync(this.reactionsFile, JSON.stringify(defaultReactions, null, 2), 'utf-8');
-                return defaultReactions;
-            }
-
-            const data = fs.readFileSync(this.reactionsFile, 'utf-8');
-            try {
-                return JSON.parse(data);
-            } catch (parseError) {
-                console.error('Erro ao parsear reações, criando novo arquivo:', parseError);
-                const defaultReactions = {
-                    "feliz": {
-                        "tipo": "ascii",
-                        "conteudo": " (＾▽＾) ",
-                        "tags": ["feliz", "alegre", "content"]
-                    },
-                    "triste": {
-                        "tipo": "ascii",
-                        "conteudo": " (╥_╥) ",
-                        "tags": ["triste", "depre"]
-                    },
-                    "safado": {
-                        "tipo": "ascii",
-                        "conteudo": " ( ͡° ͜ʖ ͡°) ",
-                        "tags": ["safado", "nsfw", "sexo"]
-                    }
-                };
-                fs.writeFileSync(this.reactionsFile, JSON.stringify(defaultReactions, null, 2), 'utf-8');
-                return defaultReactions;
-            }
-        } catch (error) {
-            console.error('Erro crítico ao carregar reações:', error);
-            return {};
-        }
-    }
-
-    findReaction(tag) {
-        tag = tag.toLowerCase();
-        for (const [key, reaction] of Object.entries(this.reactions)) {
-            if (key.toLowerCase() === tag || 
-                (reaction.tags && reaction.tags.some(t => t.toLowerCase() === tag))) {
-                this.logUsage(key);
-                return reaction;
-            }
-        }
-        return null;
-    }
-
-    logUsage(reactionName) {
-        if (!this.usageStats[reactionName]) {
-            this.usageStats[reactionName] = 0;
-        }
-        this.usageStats[reactionName]++;
-    }
-
-    getUsageStats() {
-        return Object.entries(this.usageStats)
-            .map(([reaction, count]) => ({ reaction, count }))
-            .sort((a, b) => b.count - a.count);
-    }
-
-    saveReactions() {
-        try {
-            fs.writeFileSync(this.reactionsFile, JSON.stringify(this.reactions, null, 2), 'utf-8');
-        } catch (error) {
-            console.error('Erro ao salvar reações:', error);
-        }
-    }
-}
-
 // =============================================
 // PROCESSAMENTO DE CÓDIGO
 // =============================================
@@ -2117,7 +2005,7 @@ async function processMegaCode(action, content, context, extension) {
         const needsChunking = content.length > config.buffer.maxChunkSize * 0.8;
         
         if (needsChunking) {
-            console.log(colorize(`✂️ Código grande detectado (${content.length} chars), dividindo em chunks...`, 'yellow'));
+            console.log(colorize(`✂️ Código grande detectado (${content.length} chars), dividindo em partes...`, 'yellow'));
             
             const processedContent = await processLargeCode(action, content, context, extension);
             
@@ -2413,14 +2301,15 @@ async function processCodeBufferWrapper(laraInterface, action) {
         };
     }
 }
+
 // =============================================
 // INTERFACE DO USUÁRIO
 // =============================================
 class LaraInterface {
     constructor() {
-        this.showPeerStatus = false; // Adicione esta flag
-        this.debugMode = false;  // Controla mensagens técnicas (DHT, rede, etc)
-        this.showNetworkMessages = false;  // Específico para mensagens P2P
+        this.showPeerStatus = false;
+        this.debugMode = false;
+        this.showNetworkMessages = false;
         
         this.rl = readline.createInterface({
             input: process.stdin,
@@ -2438,17 +2327,20 @@ class LaraInterface {
         this.cacheSystem = new EnhancedCacheSystem();
         this.userId = `user_${os.userInfo().username}`;
         this.requestedExtension = ".txt";
-        this.reactionSystem = new ReactionSystem();
         this.lastActivity = Date.now();
         this.bufferSystem = new AdvancedBufferSystem();
         this.isPasting = false;
         this.pasteBuffer = [];
         this.processingStats = [];
-        this.debugMode = false;
         this.memoryManager = new MemoryManager();
-        this.memoryManager.loadFixedMemory();
         console.log('✅ Memória fixa carregada:', Object.keys(this.memoryManager.fixedMemory).length, 'usuários');
         this.chatSystem = new PeerChat(this);
+    }
+
+    askQuestion(question) {
+        return new Promise((resolve) => {
+            this.rl.question(colorize(`\n${question} `, 'yellow'), resolve);
+        });
     }
 
     init() {
@@ -2510,115 +2402,44 @@ class LaraInterface {
     }
 
     showBanner() {
-    console.log(colorize(`
-   __.-"..--,__
-                               __..---"  | _|    "-_\\
-                        __.---"          | V|::.-"-._D
-                   _--"".-.._   ,,::::::'"\\/""'-:-:/
-              _.-""::_:_:::::'-8b---"            "'
-           .-/  ::::<  |\\::::::"\\
-           \\/:::/::::'\\\\ |:::b::\\
-           /|::/:::/::::-::b:%b:|
-            \\/::::d:|8:::b:"%%%%%\\
-            |\\:b:dP:d.:::%%%%%"""-,
-             \\:\\.V-/ _\\b%P_   /  .-._
-             '|T\\   "%j d:::--\\.(    "-.
-             ::d<   -" d%|:::do%P"-:.   "-,
-             |:I _    /%%%o::o8P    "\\    "\\
-              \\8b     d%%%%%%P""-._ _ \\::.    \\
-              \\%%8  _./Y%%P/      .::'-oMMo    )
-                H"'|V  |  A:::...:odMMMMMM(  ./
-                H /_.--"JMMMMbo:d##########b/
-             .-'o      dMMMMMMMMMMMMMMP""
-           /" /       YMMMMMMMMM|
-         /   .   .    "MMMMMMMM/
-         :..::..:::..  MMMMMMM:|
-          \\:/ \\::::::::JMMMP":/
-           :Ao ':__.-'MMMP:::Y
-           dMM"./:::::::::-.Y
-          _|b::od8::/:YM::/
-          I HMMMP::/:/"Y/"
-           \\'""'  '':|
-            |    -::::\\
-            |  :-._ '::\\
-            |,.|    \\ _:"o
-            | d" /   " \\_:\\.
-            ".Y. \\       \\::\\
-             \\ \\  \\      MM\\:Y
-              Y \\  |     MM \\:b
-              >\\ Y      .MM  MM
-              .IY L_    MP'  MP
-              |  \\:|   JM   JP
-              |  :\\|   MP   MM
-              |  :::  JM'  JP|
-              |  ':' JP   JM |
-              L   : JP    MP |
-              0   | Y    JM  |
-              0   |     JP"  |
-              0   |    JP    |
-              m   |   JP     #
-              I   |  JM"     Y
-              l   |  MP     :"
-              |\\  :-       :|
-              | | '.\\      :|
-              | | "| \\     :|
-               \\    \\ \\    :|
-               |  |  | \\   :|
-               |  |  |   \\ :|
-               |   \\ \\    | '.
-               |    |:\\   | :|
-               \\    |::\\..|  :\\
-                ". /::::::'  :||
-                  :|::/:::|  /:\\
-                  | \\/::|: \\' ::|
-                  |  :::||    ::|
-                  |   ::||    ::|
-                  |   ::||    ::|
-                  |   ::||    ::|
-                  |   ': |    .:|
-                  |    : |    :|
-                  |    : |    :|
-                  |    :||   .:|
-                  |   ::\\   .:|
-                 |    :::  .::|
-                /     ::|  :::|
-             __/     .::|   ':|
-    ...----""        ::/     ::
-   /m_  AMm          '/     .:::
-   ""MmmMMM#mmMMMMMMM"     .:::m
-      """YMMM""""""P        ':mMI
-               _'           _MMMM
-           _.-"  mm   mMMMMMMMM"
-          /      MMMMMMM""
-          mmmmmmMMMM"
-`, 'cyan'));
-    console.log(colorize(`\nBem-vindo(a) ao ambiente Lara Pro. Digite @help para ver os comandos.\n`, 'white'));
-}
+        console.log(colorize(`
+        ██╗      █████╗ ██████╗  █████╗ 
+        ██║     ██╔══██╗██╔══██╗██╔══██╗
+        ██║     ███████║██████╔╝███████║
+        ██║     ██╔══██║██╔══██╗██╔══██║
+        ███████╗██║  ██║██║  ██║██║  ██║
+        ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝
+        Lara Pro v2.0 - Ambiente Inteligente
+        Digite @help para ver os comandos disponíveis
+        `, 'cyan'));
+    }
+
     showStatusLine() {
-    const modeDisplay = {
-        'chat': colorize('CHAT', 'cyan'),
-        'code': colorize('CÓDIGO', 'yellow'),
-        'generate': colorize('GERAÇÃO', 'green'),
-        'text': colorize('TEXTO', 'blue'),
-        'update': colorize('ATUALIZAR', 'magenta')
-    };
-    
-    const peerStatus = this.chatSystem.currentPeer 
-        ? ` | Peer: ${colorize(this.chatSystem.currentPeer, 'magenta')}`
-        : '';
+        const modeDisplay = {
+            'chat': colorize('CHAT', 'cyan'),
+            'code': colorize('CÓDIGO', 'yellow'),
+            'generate': colorize('GERAÇÃO', 'green'),
+            'text': colorize('TEXTO', 'blue'),
+            'update': colorize('ATUALIZAR', 'magenta')
+        };
         
-    const status = [
-        `Modo: ${modeDisplay[this.currentMode] || this.currentMode}`,
-        `Buffer: ${(this.inputBuffer.length + this.codeBuffer.length).toLocaleString()} chars`,
-        `Extensão: ${this.requestedExtension}`,
-        `Quota: ${limiter.quotaUsed}/${limiter.QUOTA_LIMIT}`,
-        `Timeout: ${config.timeouts.request/1000}s`
-    ].join(' | ') + peerStatus;
-    
-    console.log(colorize(`\n${'─'.repeat(80)}`, 'gray'));
-    console.log(colorize(status, 'white'));
-    console.log(colorize(`${'─'.repeat(80)}\n`, 'gray'));
-}
+        const peerStatus = this.chatSystem.currentPeer 
+            ? ` | Peer: ${colorize(this.chatSystem.currentPeer, 'magenta')}`
+            : '';
+            
+        const status = [
+            `Modo: ${modeDisplay[this.currentMode] || this.currentMode}`,
+            `Buffer: ${(this.inputBuffer.length + this.codeBuffer.length).toLocaleString()} chars`,
+            `Extensão: ${this.requestedExtension}`,
+            `Quota: ${limiter.quotaUsed}/${limiter.QUOTA_LIMIT}`,
+            `Timeout: ${config.timeouts.request/1000}s`
+        ].join(' | ') + peerStatus;
+        
+        console.log(colorize(`\n${'─'.repeat(80)}`, 'gray'));
+        console.log(colorize(status, 'white'));
+        console.log(colorize(`${'─'.repeat(80)}\n`, 'gray'));
+    }
+
     setupEventListeners() {
         this.rl.on('line', async (input) => {
             this.lastActivity = Date.now();
@@ -2633,7 +2454,7 @@ class LaraInterface {
                         return;
                     }
                     this.pasteBuffer.push(input);
-                    this.printMessage('system', `📋 Recebido ${this.pasteBuffer.length} linhas... (Digite ~~~END~~~ para finalizar)`);
+                    this.printMessage('system', `���� Recebido ${this.pasteBuffer.length} linhas... (Digite ~~~END~~~ para finalizar)`);
                     return;
                 }
 
@@ -2688,200 +2509,112 @@ class LaraInterface {
         }
     }
 
-    async handleReactionCommand(command) {
+    async handleCommand(command) {
         try {
-            const tag = command.split(' ')[1];
-            if (!tag) {
-                this.printMessage('error', '❌ Uso: @reacao <tag> (ex: @reacao safado)');
-                return;
-            }
+            const baseCommand = command.toLowerCase().split(' ')[0];
+            switch(baseCommand) {
+                case '@peerstatus':
+                    this.showPeerStatus = !this.showPeerStatus;
+                    this.printMessage('system', `👥 Peer status ${this.showPeerStatus ? 'ativado' : 'desativado'}`);
+                    break;
 
-            const reactionShown = await this.showReaction(tag);
-            if (!reactionShown) {
-                const allTags = [...new Set(
-                    Object.values(this.reactionSystem.reactions).flatMap(r => r.tags)
-                )].join(', ');
-                this.printMessage('warning', `📌 Tags disponíveis: ${allTags}`);
-            }
-        } catch (error) {
-            this.printMessage('error', `❌ Erro no comando de reação: ${error.message}`);
-        }
-    }
+                case '@whoami':
+                    this.printMessage('system', `🔑 Seu usuário no chat P2P é: ${colorize(`@${os.userInfo().username}`, 'cyan')}`);
+                    break;
 
-    async showReaction(tag) {
-        try {
-            tag = tag.toLowerCase();
-            const reaction = this.reactionSystem.findReaction(tag);
-            
-            if (!reaction) return false;
+                case '@code':
+                    this.currentMode = 'code';
+                    this.codeBuffer = '';
+                    this.requestedExtension = ".js";
+                    this.printMessage('system', '💻 Modo Código Ativo. Digite seu código e use /xsend para enviar');
+                    break;
 
-            if (reaction.tipo === 'ascii') {
-                console.log('\n' + reaction.conteudo + '\n');
-            } else if (reaction.tipo === 'script') {
-                const response = await axios.get(reaction.url);
-                const tempFile = path.join(os.tmpdir(), `reaction_${Date.now()}.js`);
-                fs.writeFileSync(tempFile, response.data);
-                child_process.execSync(`node "${tempFile}"`, { stdio: 'inherit' });
-                fs.unlinkSync(tempFile);
-            }
-            return true;
-        } catch (error) {
-            this.printMessage('error', `❌ Erro ao mostrar reação: ${error.message}`);
-            return false;
-        }
-    }
-
-async handleCommand(command) {
-    try {
-        // Comandos especiais com regex primeiro
-        if (command.startsWith('@reacao')) {
-            await this.handleReactionCommand(command);
-            return;
-        }
-
-        const codeGenMatch = command.match(/^@code\s+gere\s+em\s+\/ext\s+(\.[a-z]+)\s+(.+)$/i);
-        if (codeGenMatch) {
-            const [, ext, description] = codeGenMatch;
-            this.requestedExtension = ext;
-            this.currentMode = 'generate';
-            this.codeBuffer = description;
-            this.printMessage('system', `⚙️ Gerando código em ${ext}...`);
-            await this.processCodeBuffer();
-            return;
-        }
-
-        const textGenMatch = command.match(/^@text\s+(.+)$/i);
-        if (textGenMatch) {
-            const [, description] = textGenMatch;
-            this.currentMode = 'text';
-            this.codeBuffer = description;
-            this.requestedExtension = ".txt";
-            this.printMessage('system', '⚙️ Gerando texto...');
-            await this.processCodeBuffer();
-            return;
-        }
-
-        const updateMatch = command.match(/^@atualize\s+(?:esse\s+código|o\s+código)\s+em\s+\/ext\s+(\.[a-z]+)\s+(.+)$/i);
-        if (updateMatch) {
-            const [, ext, instructions] = updateMatch;
-            this.requestedExtension = ext;
-            this.currentMode = 'update';
-            
-            if (!this.codeBuffer) {
-                this.printMessage('error', '❌ Nenhum código no buffer para atualizar');
-                return;
-            }
-            
-            this.printMessage('system', `⚙️ Atualizando código em ${ext}...`);
-            const result = await processMegaCode('refactor', this.codeBuffer, instructions, this.requestedExtension);
-            this.showResult(result, "✅ Código atualizado com sucesso!");
-            return;
-        }
-
-        // Comandos básicos
-        const baseCommand = command.toLowerCase().split(' ')[0];
-        switch(baseCommand) {
-            case '@peerstatus':
-                this.showPeerStatus = !this.showPeerStatus;
-                this.printMessage('system', `👥 Peer status ${this.showPeerStatus ? 'ativado' : 'desativado'}`);
-                break;
-
-            case '@whoami':
-                this.printMessage('system', `🔑 Seu usuário no chat P2P é: ${colorize(`@${os.userInfo().username}`, 'cyan')}`);
-                break;
-
-            case '@code':
-                this.currentMode = 'code';
-                this.codeBuffer = '';
-                this.requestedExtension = ".js";
-                this.printMessage('system', '💻 Modo Código Ativo. Digite seu código e use /xsend para enviar');
-                break;
-
-            case '@chat':
-                this.currentMode = 'chat';
-                this.printMessage('system', '💬 Modo Conversa Ativado');
-                break;
-
-            case '@analyze':
-                if (this.currentMode !== 'code') {
-                    this.printMessage('error', '❌ Primeiro entre no modo código com @code');
-                } else {
-                    this.printMessage('system', '🔍 Preparado para análise (use /xsend para confirmar)');
-                }
-                break;
-
-            case '@atualizar':
-                if (this.currentMode !== 'code') {
-                    this.printMessage('error', '❌ Primeiro entre no modo código com @code');
-                } else {
-                    this.printMessage('system', '🔄 Preparado para atualizar código (use /xsend para confirmar)');
-                }
-                break;
-
-            case '@generate':
-                this.currentMode = 'generate';
-                this.codeBuffer = '';
-                this.requestedExtension = ".js";
-                this.printMessage('system', '✨ Modo Geração Ativado. Descreva o código e use /xsend para gerar');
-                this.printMessage('system', '💡 Dica: Use /ext .<formato> para definir a extensão (ex: /ext .py)');
-                break;
-
-            case '@reset':
-                try {
-                    this.cacheSystem.volatileMemory.clear();
-                    this.cacheSystem.physicalMemory = { users: {}, summaries: {} };
-                    fs.writeFileSync(path.join(this.cacheSystem.cacheDir, 'physical_memory.json'), '{}');
-                    fs.writeFileSync(CONTEXT_FILE, '{}');
-                    
-                    this.context = {};
-                    this.inputBuffer = "";
-                    this.codeBuffer = "";
+                case '@chat':
                     this.currentMode = 'chat';
-                    this.isWaitingXsend = false;
-                    
-                    this.printMessage('success', '🔄✅ Sistema totalmente resetado! Todas memórias limpas.');
-                } catch (error) {
-                    this.printMessage('error', `❌ Falha no reset: ${error.message}`);
-                }
-                break;
+                    this.printMessage('system', '💬 Modo Conversa Ativado');
+                    break;
 
-            case '@web':
-                this.printMessage('system', `🌐 Interface web disponível em: http://localhost:${config.PORT}`);
-                break;
+                case '@analyze':
+                    if (this.currentMode !== 'code') {
+                        this.printMessage('error', '❌ Primeiro entre no modo código com @code');
+                    } else {
+                        this.printMessage('system', '🔍 Preparado para análise (use /xsend para confirmar)');
+                    }
+                    break;
 
-            case '@status':
-                await this.showSystemStatus();
-                break;
+                case '@atualizar':
+                    if (this.currentMode !== 'code') {
+                        this.printMessage('error', '❌ Primeiro entre no modo código com @code');
+                    } else {
+                        this.printMessage('system', '🔄 Preparado para atualizar código (use /xsend para confirmar)');
+                    }
+                    break;
 
-            case '@help':
-                this.showHelp();
-                break;
+                case '@generate':
+                    this.currentMode = 'generate';
+                    this.codeBuffer = '';
+                    this.requestedExtension = ".js";
+                    this.printMessage('system', '✨ Modo Geração Ativado. Descreva o código e use /xsend para gerar');
+                    this.printMessage('system', '💡 Dica: Use /ext .<formato> para definir a extensão (ex: /ext .py)');
+                    break;
 
-            case '@debug':
-                this.debugMode = !this.debugMode;
-                this.printMessage('system', `🐞 Modo debug ${this.debugMode ? 'ativado' : 'desativado'}`);
-                break;
+                case '@reset':
+                    try {
+                        this.cacheSystem.volatileMemory.clear();
+                        this.cacheSystem.physicalMemory = { users: {}, summaries: {} };
+                        fs.writeFileSync(path.join(this.cacheSystem.cacheDir, 'physical_memory.json'), '{}');
+                        fs.writeFileSync(CONTEXT_FILE, '{}');
+                        
+                        this.context = {};
+                        this.inputBuffer = "";
+                        this.codeBuffer = "";
+                        this.currentMode = 'chat';
+                        this.isWaitingXsend = false;
+                        
+                        this.printMessage('success', '🔄✅ Sistema totalmente resetado! Todas memórias limpas.');
+                    } catch (error) {
+                        this.printMessage('error', `❌ Falha no reset: ${error.message}`);
+                    }
+                    break;
 
-            case '@exit':
-                this.printMessage('system', '👋 Saindo... Até a próxima!');
-                this.rl.close();
-                process.exit(0);
-                break;
+                case '@web':
+                    this.printMessage('system', `🌐 Interface web disponível em: http://localhost:${config.PORT}`);
+                    break;
 
-            default:
-                this.printMessage('warning', '⚠️ Comando desconhecido');
-                this.showHelp();
-                break;
-        }
-    } catch (error) {
-        this.printMessage('error', `❌ Erro ao processar comando: ${error.message}`);
-        if (this.debugMode) {
-            this.printMessage('debug', `🛠️ Stack: ${error.stack || 'N/A'}`);
+                case '@status':
+                    await this.showSystemStatus();
+                    break;
+
+                case '@help':
+                    this.showHelp();
+                    break;
+
+                case '@debug':
+                    this.debugMode = !this.debugMode;
+                    this.printMessage('system', `🐞 Modo debug ${this.debugMode ? 'ativado' : 'desativado'}`);
+                    break;
+
+                case '@exit':
+                    this.printMessage('system', '👋 Saindo... Até a próxima!');
+                    this.rl.close();
+                    process.exit(0);
+                    break;
+
+                default:
+                    this.printMessage('warning', '⚠️ Comando desconhecido');
+                    this.showHelp();
+                    break;
+            }
+        } catch (error) {
+            this.printMessage('error', `❌ Erro ao processar comando: ${error.message}`);
+            if (this.debugMode) {
+                this.printMessage('debug', `🛠️ Stack: ${error.stack || 'N/A'}`);
+            }
         }
     }
-}
+
     showHelp() {
-    console.log(colorize(`
+        console.log(colorize(`
 ┌──────────────────────────────────────────────────────┐
 │                   MENU DE AJUDA DA LARA              │
 ├──────────────────────────────────────────────────────┤
@@ -2894,7 +2627,6 @@ async handleCommand(command) {
 │  ${colorize('💬 COMANDOS DE CHAT:', 'cyan')}                         │
 │  @chat        - Voltar ao modo conversa              │
 │  @whoami      - Mostrar seu nome de usuário P2P      │
-│  @reacao <tag>- Mostrar reação (ex: @reacao feliz)   │
 │                                                     │
 │  ${colorize('🌐 COMANDOS DE REDE:', 'magenta')}                      │
 │  @net         - Alternar mensagens de rede           │
@@ -2918,165 +2650,7 @@ async handleCommand(command) {
 │  @exit        - Sair do programa                     │
 └──────────────────────────────────────────────────────┘
 `, 'white'));
-    this.rl.prompt();
-}
-
-    handleInput(input) {
-        try {
-            if (this.currentMode === 'code' || this.currentMode === 'generate' || 
-                this.currentMode === 'text' || this.currentMode === 'update') {
-                this.codeBuffer += input + '\n';
-            } else {
-                this.inputBuffer += input + '\n';
-            }
-            
-            this.isWaitingXsend = true;
-            const lineCount = this.currentMode === 'chat' 
-                ? this.inputBuffer.split('\n').length 
-                : this.codeBuffer.split('\n').length;
-            this.printMessage('system', `📥 ${lineCount} linhas armazenadas (use /xsend para enviar)`);
-        } catch (error) {
-            this.printMessage('error', `❌ Erro ao processar entrada: ${error.message}`);
-        }
-    }
-
-    async handlePastedContent(content) {
-        try {
-            if (content.length > config.buffer.maxPasteSize) {
-                this.printMessage('error', `❌ Tamanho máximo excedido (${content.length} > ${config.buffer.maxPasteSize})`);
-                return;
-            }
-
-            this.printMessage('system', `📋 Processando colagem (${content.length.toLocaleString()} caracteres)...`);
-            
-            if (this.currentMode === 'code' || this.currentMode === 'generate' || 
-                this.currentMode === 'update') {
-                this.codeBuffer = content;
-                this.printMessage('success', '✅ Código colado no buffer (use /xsend para processar)');
-            } else {
-                this.inputBuffer = content;
-                this.printMessage('success', '✅ Texto colado no buffer (use /xsend para enviar)');
-            }
-            
-            this.isWaitingXsend = true;
-        } catch (error) {
-            this.printMessage('error', `❌ Falha ao processar colagem: ${error.message}`);
-        }
-    }
-
-    async handleXsend() {
-        try {
-            if (!this.isWaitingXsend) {
-                this.printMessage('warning', '⚠️ Nada para enviar');
-                return;
-            }
-
-            const targetBuffer = (this.currentMode === 'code' || this.currentMode === 'generate' || 
-                                 this.currentMode === 'text' || this.currentMode === 'update')
-                               ? this.codeBuffer 
-                               : this.inputBuffer;
-
-            if (!targetBuffer.trim()) {
-                this.printMessage('error', '❌ Buffer vazio');
-                return;
-            }
-
-            this.printMessage('system', `⏳ Processando ${targetBuffer.length.toLocaleString()} caracteres...`);
-
-            if (this.currentMode === 'code' || this.currentMode === 'generate' || 
-                this.currentMode === 'text' || this.currentMode === 'update') {
-                await this.processCodeBuffer();
-            } else {
-                await this.processChatBuffer();
-            }
-        } catch (error) {
-            this.printMessage('error', `❌ Erro no envio: ${error.message}`);
-        }
-    }
-
-    async processCodeBuffer() {
-        try {
-            const action = this._determineProcessingAction();
-            
-            const processingResult = await processCodeBufferWrapper(this, action);
-            
-            if (!processingResult) return;
-
-            if (processingResult.error) {
-                this.printMessage('error', `❌ Erro no processamento: ${processingResult.message}`);
-                if (processingResult.recoveryPath) {
-                    this.printMessage('system', `🔄 Arquivo de recuperação gerado em: ${processingResult.recoveryPath}`);
-                }
-                return;
-            }
-
-            this._handleProcessingResult(processingResult, action);
-        } catch (error) {
-            this.printMessage('error', `❌ Erro no processamento: ${error.message}`);
-            
-            if (this.debugMode) {
-                this.printMessage('debug', `🛠️ Stack: ${error.stack || 'N/A'}`);
-            }
-        }
-    }
-
-    _determineProcessingAction() {
-        if (this.currentMode === 'generate') return 'generate';
-        if (this.currentMode === 'text') return 'text';
-        if (this.currentMode === 'update') return 'atualizar';
-        return this.context.lastOperation?.action || 'analyze';
-    }
-
-    _handleProcessingResult(result, action) {
-        let resultPath = result.path || path.join(
-            this.debugMode ? config.baseDir : OUTPUT_DIR,
-            `${action}_${Date.now()}${this.requestedExtension}`
-        );
-
-        let resultContent = result.content || '// Erro: Nenhum conteúdo gerado\n';
-
-        if (!result.path) {
-            try {
-                fs.writeFileSync(resultPath, resultContent);
-                logFileOperation('save_file', resultPath);
-            } catch (error) {
-                const fallbackPath = path.join(os.tmpdir(), `lara_fallback_${Date.now()}${this.requestedExtension}`);
-                fs.writeFileSync(fallbackPath, resultContent);
-                resultPath = fallbackPath;
-            }
-        }
-
-        this.showResult({ ...result, path: resultPath, content: resultContent }, this.getActionResultMessage(action));
-        this.processingStats.push(result.stats);
-        
-        if (this.debugMode) {
-            this.printMessage('debug', `⏱️ Estatísticas:\n- Duração: ${result.stats.duration}ms\n- Chunks: ${result.stats.chunks}\n- Integridade: ${result.stats.integrityCheck?.valid ? '✅' : '❌'}`);
-        }
-
-        this.context.lastOperation = {
-            action,
-            file: path.basename(result.path),
-            timestamp: Date.now(),
-            size: result.size,
-            chunks: result.stats.chunks,
-            integrity: result.stats.integrityCheck?.valid ? 'valid' : 'invalid'
-        };
-        saveContext(this.context);
-
-        this.cacheSystem.logInteraction(this.userId, {
-            type: 'code',
-            action,
-            file: path.basename(result.path),
-            size: result.size,
-            chunks: result.stats.chunks,
-            duration: result.stats.duration
-        });
-
-        this.codeBuffer = "";
-        this.inputBuffer = "";
-        this.currentMode = 'chat';
-        this.isWaitingXsend = false;
-        this.requestedExtension = ".js";
+        this.rl.prompt();
     }
 
     async processChatBuffer() {
@@ -3086,17 +2660,8 @@ async handleCommand(command) {
                 return;
             }
 
-            if (this.inputBuffer.trim().startsWith('/')) {
-                return chatUI.handleCommand(this.inputBuffer, this);
-            }
-
             this.printMessage('system', '⏳ Processando...');
             
-            const autoReaction = this.reactionSystem.findReaction(this.inputBuffer);
-            if (autoReaction && autoReaction.tipo === 'ascii') {
-                console.log('\n' + autoReaction.conteudo + '\n');
-            }
-
             const memoryContext = this.memoryManager.getTemporaryMemory(this.userId);
             const lastMessages = memoryContext.slice(-3).map(m => `${m.user}\n${m.bot}`).join('\n');
 
@@ -3129,16 +2694,6 @@ async handleCommand(command) {
             
             this.memoryManager.updateMemory(this.userId, this.inputBuffer, text);
 
-            if (text.includes('maconha') || text.includes('fumar')) {
-                await this.showReaction('fumando');
-            } else if (text.includes('código') || text.includes('programação')) {
-                await this.showReaction('pensando');
-            } else if (text.includes('feliz') || text.includes('alegre')) {
-                await this.showReaction('feliz');
-            } else if (text.includes('safado') || text.includes('sexo')) {
-                await this.showReaction('safado');
-            }
-
             this.inputBuffer = "";
             this.isWaitingXsend = false;
 
@@ -3147,75 +2702,10 @@ async handleCommand(command) {
         }
     }
 
-    showResult(result, successMessage) {
-        try {
-            if (!result) {
-                this.printMessage('error', '❌ Nenhum resultado para exibir');
-                return;
-            }
-
-            const fileExists = result.path && fs.existsSync(result.path);
-            const validContent = result.content && result.content.trim() !== '';
-
-            if (result.error) {
-                this.printMessage('error', `❌ Erro: ${result.message}`);
-                if (result.recoveryPath) {
-                    this.printMessage('system', `📌 Arquivo de recuperação: ${result.recoveryPath}`);
-                    if (fs.existsSync(result.recoveryPath)) {
-                        this.printMessage('system', `🌐 Acesse: http://localhost:${config.PORT}/download/${path.basename(result.recoveryPath)}`);
-                    }
-                }
-                return;
-            }
-
-            this.printMessage('success', successMessage);
-
-            if (fileExists) {
-                const fileUrl = `http://localhost:${config.PORT}/download/${path.basename(result.path)}`;
-                this.printMessage('system', `📄 Arquivo gerado: ${result.path}`);
-                this.printMessage('system', `🌐 Download: ${fileUrl}`);
-                
-                if (!this.context.generatedFiles) {
-                    this.context.generatedFiles = [];
-                }
-                this.context.generatedFiles.push({
-                    path: result.path,
-                    url: fileUrl,
-                    timestamp: new Date().toISOString()
-                });
-                saveContext(this.context);
-            } else if (validContent) {
-                const newFilename = `recovered_${Date.now()}${this.requestedExtension}`;
-                const newPath = path.join(OUTPUT_DIR, newFilename);
-                fs.writeFileSync(newPath, result.content);
-                
-                this.printMessage('warning', '⚠️ Arquivo original não encontrado, mas conteúdo recuperado');
-                this.printMessage('system', `📄 Novo arquivo gerado: ${newPath}`);
-                this.printMessage('system', `🌐 Download: http://localhost:${config.PORT}/download/${newFilename}`);
-            } else {
-                this.printMessage('error', '❌ Nenhum conteúdo válido para exibir');
-            }
-        } catch (error) {
-            this.printMessage('error', `❌ Erro ao mostrar resultado: ${error.message}`);
-        }
-    }
-
-    getActionResultMessage(action) {
-        const messages = {
-            analyze: "🔍 Análise concluída!",
-            atualizar: "🔄 Código atualizado com sucesso!",
-            generate: "✨ Código gerado com sucesso!",
-            text: "📝 Texto gerado com sucesso!",
-            update: "⚡ Código atualizado com sucesso!"
-        };
-        return messages[action] || "✅ Operação concluída!";
-    }
-
-        async showSystemStatus() {
+    async showSystemStatus() {
         try {
             const userContext = await this.cacheSystem.getUserContext(this.userId);
             const processingStats = this.cacheSystem.getProcessingStats();
-            const reactionStats = this.reactionSystem.getUsageStats().slice(0, 3);
             const memoryStats = this.memoryManager.getTemporaryMemory(this.userId).length;
             
             console.log(colorize(`
@@ -3233,7 +2723,6 @@ async handleCommand(command) {
 │  • Total processado: ${processingStats.totalProcessed.toLocaleString().padEnd(10)} chars${''.padEnd(15)} │
 │  • Média chunks:     ${Math.round(processingStats.avgChunkSize).toLocaleString().padEnd(10)} chars${''.padEnd(15)} │
 │  • Taxa sucesso:    ${processingStats.successRate.toFixed(1).padEnd(10)}%${''.padEnd(15)} │
-│  • Reações usadas:  ${reactionStats.map(r => `${r.reaction}:${r.count}`).join(', ').padEnd(30)} │
 │                                                     │
 │  === CONTEXTO RECENTE ===                           │
 │  • Tópicos:        ${userContext.recent.length > 0 ? 
@@ -3259,15 +2748,10 @@ class WebInterface {
         this.app = http.createServer(this.handleRequest.bind(this));
         this.lara = laraInterface;
         this.fileBackup = new FileBackup();
-        this.setupRoutes();
-    }
-
-    setupRoutes() {
         this.routes = {
             '/': this.handleRoot.bind(this),
             '/download/': this.handleDownload.bind(this),
             '/stats': this.handleStats.bind(this),
-            '/reactions': this.handleReactions.bind(this),
             '/backups': this.handleBackups.bind(this),
             '/memory': this.handleMemory.bind(this)
         };
@@ -3337,7 +2821,6 @@ class WebInterface {
                     <h2>Links Rápidos</h2>
                     <ul>
                         <li><a href="/stats">Estatísticas</a></li>
-                        <li><a href="/reactions">Reações</a></li>
                         <li><a href="/backups">Backups</a></li>
                         <li><a href="/memory">Memória</a></li>
                     </ul>
@@ -3376,63 +2859,31 @@ class WebInterface {
     async handleStats(req, res) {
         try {
             const stats = {
-                system: {
-                    platform: os.platform(),
-                    arch: os.arch(),
-                    uptime: os.uptime(),
-                    memory: os.totalmem() - os.freemem()
-                },
-                lara: {
-                    quota: `${limiter.quotaUsed}/${limiter.QUOTA_LIMIT}`,
-                    bufferSize: this.lara.codeBuffer.length + this.lara.inputBuffer.length,
-                    mode: this.lara.currentMode,
-                    extension: this.lara.requestedExtension
-                },
-                processing: this.lara.cacheSystem.getProcessingStats(),
-                reactions: this.lara.reactionSystem.getUsageStats()
+                uptime: process.uptime(),
+                memoryUsage: process.memoryUsage(),
+                processingStats: this.lara.cacheSystem.getProcessingStats()
             };
-
             this.sendResponse(res, 200, stats);
         } catch (error) {
             this.sendResponse(res, 500, { error: 'Erro ao obter estatísticas', details: error.message });
         }
     }
 
-    async handleReactions(req, res) {
-        try {
-            const reactions = Object.entries(this.lara.reactionSystem.reactions).map(([name, data]) => ({
-                name,
-                type: data.tipo,
-                content: data.tipo === 'ascii' ? data.conteudo : 'script',
-                tags: data.tags
-            }));
-
-            this.sendResponse(res, 200, { reactions });
-        } catch (error) {
-            this.sendResponse(res, 500, { error: 'Erro ao obter reações', details: error.message });
-        }
-    }
-
     async handleBackups(req, res) {
         try {
-            const backups = this.fileBackup.getRecentBackups(10);
-            this.sendResponse(res, 200, { backups });
+            const backups = this.fileBackup.getRecentBackups();
+            this.sendResponse(res, 200, backups);
         } catch (error) {
-            this.sendResponse(res, 500, { error: 'Erro ao obter backups', details: error.message });
+            this.sendResponse(res, 500, { error: 'Erro ao listar backups', details: error.message });
         }
     }
 
     async handleMemory(req, res) {
         try {
             const memory = {
-                volatile: Array.from(this.lara.cacheSystem.volatileMemory.entries())
-                    .map(([key, value]) => ({ key, count: value.length })),
-                physical: {
-                    users: Object.keys(this.lara.cacheSystem.physicalMemory.users).length,
-                    summaries: Object.keys(this.lara.cacheSystem.physicalMemory.summaries).length
-                }
+                volatile: this.lara.cacheSystem.volatileMemory.size,
+                physical: Object.keys(this.lara.cacheSystem.physicalMemory.users).length
             };
-
             this.sendResponse(res, 200, memory);
         } catch (error) {
             this.sendResponse(res, 500, { error: 'Erro ao obter memória', details: error.message });
@@ -3450,7 +2901,6 @@ class WebInterface {
         });
     }
 }
-
 // =============================================
 // SISTEMA DE ATUALIZAÇÃO
 // =============================================
@@ -3475,36 +2925,6 @@ class UpdateSystem {
         }
     }
 
-    async downloadUpdate() {
-        try {
-            this.lara.printMessage('system', '⏳ Baixando atualização...');
-            
-            const GITHUB_RAW_URL = "https://raw.githubusercontent.com/leandoo/lara/main/lara.js";
-            const response = await axios.get(GITHUB_RAW_URL, { responseType: 'stream' });
-            
-            const updateDir = path.join(config.baseDir, 'updates');
-            if (!fs.existsSync(updateDir)) {
-                fs.mkdirSync(updateDir, { recursive: true });
-            }
-            
-            this.updateFile = path.join(updateDir, `update_${Date.now()}.js`);
-            const writer = fs.createWriteStream(this.updateFile);
-            
-            response.data.pipe(writer);
-            
-            return new Promise((resolve, reject) => {
-                writer.on('finish', () => {
-                    this.lara.printMessage('success', '✅ Atualização baixada com sucesso!');
-                    resolve(true);
-                });
-                writer.on('error', reject);
-            });
-        } catch (error) {
-            this.lara.printMessage('error', `❌ Falha ao baixar atualização: ${error.message}`);
-            return false;
-        }
-    }
-
     async applyUpdate() {
         if (!this.updateFile || !fs.existsSync(this.updateFile)) {
             this.lara.printMessage('error', '❌ Nenhum arquivo de atualização disponível');
@@ -3512,16 +2932,13 @@ class UpdateSystem {
         }
 
         try {
-            // 1. Criar backup da versão atual
             const currentContent = fs.readFileSync(__filename, 'utf-8');
             const backupFile = path.join(config.baseDir, 'backups', `backup_${Date.now()}.js`);
             fs.writeFileSync(backupFile, currentContent);
             
-            // 2. Substituir arquivo atual
             const updateContent = fs.readFileSync(this.updateFile, 'utf-8');
             fs.writeFileSync(__filename, updateContent);
             
-            // 3. Limpar
             fs.unlinkSync(this.updateFile);
             this.updateFile = null;
             this.updateAvailable = false;
@@ -3538,8 +2955,6 @@ class UpdateSystem {
 
     restartApplication() {
         this.lara.printMessage('system', '🔄 Reiniciando aplicação...');
-        
-        // Usando o próprio processo para reiniciar
         process.on('exit', () => {
             child_process.spawn(process.argv.shift(), process.argv, {
                 cwd: process.cwd(),
@@ -3547,58 +2962,46 @@ class UpdateSystem {
                 stdio: 'inherit'
             });
         });
-        
         process.exit(0);
     }
 }
 
 // =============================================
-// FUNÇÃO PRINCIPAL
+// INICIALIZAÇÃO DO SISTEMA
 // =============================================
 async function main() {
     try {
-        // 1. Garantir estrutura de diretórios
-        const requiredDirs = [
-            config.baseDir,
-            OUTPUT_DIR,
-            CHUNKS_DIR,
-            path.join(config.baseDir, 'backups'),
-            path.join(config.baseDir, 'memory'),
-            path.join(config.baseDir, 'chat_history')
-        ];
-
-        requiredDirs.forEach(dir => {
+        // Criar estrutura de diretórios
+        [config.baseDir, OUTPUT_DIR, CHUNKS_DIR].forEach(dir => {
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true });
                 logFileOperation('create_directory', dir);
             }
         });
 
-        // 2. Inicializar Gemini
-        const geminiReady = await initializeGemini();
-        if (!geminiReady) {
-            throw new Error('Falha crítica na inicialização do Gemini');
+        // Inicializar Gemini
+        if (!await initializeGemini()) {
+            throw new Error('Inicialização do Gemini falhou');
         }
 
-        // 3. Criar interface do usuário
+        // Criar interfaces
         const laraInterface = new LaraInterface();
         const webInterface = new WebInterface(laraInterface);
         const updateSystem = new UpdateSystem(laraInterface);
 
-        // 4. Verificar atualizações
+        // Verificar atualizações
         setTimeout(() => updateSystem.checkForUpdates(), 5000);
 
-        // 5. Iniciar servidor web
+        // Iniciar servidor web
         webInterface.start();
 
-        // 6. Iniciar interface CLI
+        // Iniciar interface
         laraInterface.init();
 
-        // 7. Registrar comandos de atualização
+        // Registrar handlers de atualização
         laraInterface.rl.on('line', (input) => {
             if (input.trim() === '/atualizar') {
-                updateSystem.downloadUpdate()
-                    .then(success => success && updateSystem.applyUpdate());
+                updateSystem.applyUpdate();
             } else if (input.trim() === '/reiniciar') {
                 updateSystem.restartApplication();
             }
@@ -3611,7 +3014,7 @@ async function main() {
 }
 
 // =============================================
-// INICIALIZAÇÃO
+// INICIAR APLICAÇÃO
 // =============================================
 if (require.main === module) {
     main().catch(error => {
@@ -3625,6 +3028,5 @@ module.exports = {
     WebInterface,
     UpdateSystem,
     config,
-    processMegaCode,
-    AdvancedBufferSystem
+    processMegaCode
 };
