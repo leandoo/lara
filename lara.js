@@ -2510,7 +2510,7 @@ class LaraInterface {
     }
 
     showBanner() {
-        console.log(colorize(`
+    console.log(colorize(`
    __.-"..--,__
                                __..---"  | _|    "-_\\
                         __.---"          | V|::.-"-._D
@@ -2524,7 +2524,7 @@ class LaraInterface {
              \\:\\.V-/ _\\b%P_   /  .-._
              '|T\\   "%j d:::--\\.(    "-.
              ::d<   -" d%|:::do%P"-:.   "-,
-             |:I _    /%%%o::o8P    "\\.    "\\
+             |:I _    /%%%o::o8P    "\\    "\\
               \\8b     d%%%%%%P""-._ _ \\::.    \\
               \\%%8  _./Y%%P/      .::'-oMMo    )
                 H"'|V  |  A:::...:odMMMMMM(  ./
@@ -2592,35 +2592,33 @@ class LaraInterface {
           /      MMMMMMM""
           mmmmmmMMMM"
 `, 'cyan'));
-        console.log(colorize(`\nBem-vindo(a) ao ambiente Lara Pro. Digite @help para ver os comandos.\n`, 'white'));
-    }
-
+    console.log(colorize(`\nBem-vindo(a) ao ambiente Lara Pro. Digite @help para ver os comandos.\n`, 'white'));
+}
     showStatusLine() {
-        const modeDisplay = {
-            'chat': colorize('CHAT', 'cyan'),
-            'code': colorize('CÓDIGO', 'yellow'),
-            'generate': colorize('GERAÇÃO', 'green'),
-            'text': colorize('TEXTO', 'blue'),
-            'update': colorize('ATUALIZAR', 'magenta')
-        };
+    const modeDisplay = {
+        'chat': colorize('CHAT', 'cyan'),
+        'code': colorize('CÓDIGO', 'yellow'),
+        'generate': colorize('GERAÇÃO', 'green'),
+        'text': colorize('TEXTO', 'blue'),
+        'update': colorize('ATUALIZAR', 'magenta')
+    };
+    
+    const peerStatus = this.chatSystem.currentPeer 
+        ? ` | Peer: ${colorize(this.chatSystem.currentPeer, 'magenta')}`
+        : '';
         
-        const peerStatus = this.chatSystem.currentPeer 
-            ? ` | Peer: ${colorize(this.chatSystem.currentPeer, 'magenta')}`
-            : '';
-            
-        const status = [
-            `Modo: ${modeDisplay[this.currentMode] || this.currentMode}`,
-            `Buffer: ${(this.inputBuffer.length + this.codeBuffer.length).toLocaleString()} chars`,
-            `Extensão: ${this.requestedExtension}`,
-            `Quota: ${limiter.quotaUsed}/${limiter.QUOTA_LIMIT}`,
-            `Timeout: ${config.timeouts.request/1000}s`
-        ].join(' | ') + peerStatus;
-        
-        console.log(colorize(`\n${'─'.repeat(80)}`, 'gray'));
-        console.log(colorize(status, 'white'));
-        console.log(colorize(`${'─'.repeat(80)}\n`, 'gray'));
-    }
-
+    const status = [
+        `Modo: ${modeDisplay[this.currentMode] || this.currentMode}`,
+        `Buffer: ${(this.inputBuffer.length + this.codeBuffer.length).toLocaleString()} chars`,
+        `Extensão: ${this.requestedExtension}`,
+        `Quota: ${limiter.quotaUsed}/${limiter.QUOTA_LIMIT}`,
+        `Timeout: ${config.timeouts.request/1000}s`
+    ].join(' | ') + peerStatus;
+    
+    console.log(colorize(`\n${'─'.repeat(80)}`, 'gray'));
+    console.log(colorize(status, 'white'));
+    console.log(colorize(`${'─'.repeat(80)}\n`, 'gray'));
+}
     setupEventListeners() {
         this.rl.on('line', async (input) => {
             this.lastActivity = Date.now();
@@ -2733,9 +2731,9 @@ class LaraInterface {
         }
     }
 
- async handleCommand(command) {
+async handleCommand(command) {
     try {
-        // Comandos que usam regex ou lógica complexa primeiro
+        // Comandos especiais com regex primeiro
         if (command.startsWith('@reacao')) {
             await this.handleReactionCommand(command);
             return;
@@ -2780,44 +2778,45 @@ class LaraInterface {
             return;
         }
 
-        // Comandos simples com switch
-        switch(command.toLowerCase()) {
+        // Comandos básicos
+        const baseCommand = command.toLowerCase().split(' ')[0];
+        switch(baseCommand) {
             case '@peerstatus':
-    this.showPeerStatus = !this.showPeerStatus;
-    this.showNetworkMessages = this.showPeerStatus;  // Sincroniza as configurações
-    this.printMessage('system', `👥 Status de rede ${this.showPeerStatus ? 'ativado' : 'desativado'}`);
-    return;
+                this.showPeerStatus = !this.showPeerStatus;
+                this.printMessage('system', `👥 Peer status ${this.showPeerStatus ? 'ativado' : 'desativado'}`);
+                break;
+
             case '@whoami':
                 this.printMessage('system', `🔑 Seu usuário no chat P2P é: ${colorize(`@${os.userInfo().username}`, 'cyan')}`);
-                return;
+                break;
 
             case '@code':
                 this.currentMode = 'code';
                 this.codeBuffer = '';
                 this.requestedExtension = ".js";
                 this.printMessage('system', '💻 Modo Código Ativo. Digite seu código e use /xsend para enviar');
-                return;
+                break;
 
             case '@chat':
                 this.currentMode = 'chat';
                 this.printMessage('system', '💬 Modo Conversa Ativado');
-                return;
+                break;
 
             case '@analyze':
                 if (this.currentMode !== 'code') {
                     this.printMessage('error', '❌ Primeiro entre no modo código com @code');
-                    return;
+                } else {
+                    this.printMessage('system', '🔍 Preparado para análise (use /xsend para confirmar)');
                 }
-                this.printMessage('system', '🔍 Preparado para análise (use /xsend para confirmar)');
-                return;
+                break;
 
             case '@atualizar':
                 if (this.currentMode !== 'code') {
                     this.printMessage('error', '❌ Primeiro entre no modo código com @code');
-                    return;
+                } else {
+                    this.printMessage('system', '🔄 Preparado para atualizar código (use /xsend para confirmar)');
                 }
-                this.printMessage('system', '🔄 Preparado para atualizar código (use /xsend para confirmar)');
-                return;
+                break;
 
             case '@generate':
                 this.currentMode = 'generate';
@@ -2825,7 +2824,7 @@ class LaraInterface {
                 this.requestedExtension = ".js";
                 this.printMessage('system', '✨ Modo Geração Ativado. Descreva o código e use /xsend para gerar');
                 this.printMessage('system', '💡 Dica: Use /ext .<formato> para definir a extensão (ex: /ext .py)');
-                return;
+                break;
 
             case '@reset':
                 try {
@@ -2844,35 +2843,35 @@ class LaraInterface {
                 } catch (error) {
                     this.printMessage('error', `❌ Falha no reset: ${error.message}`);
                 }
-                return;
+                break;
 
             case '@web':
                 this.printMessage('system', `🌐 Interface web disponível em: http://localhost:${config.PORT}`);
-                return;
+                break;
 
             case '@status':
                 await this.showSystemStatus();
-                return;
+                break;
 
             case '@help':
                 this.showHelp();
-                return;
+                break;
 
             case '@debug':
                 this.debugMode = !this.debugMode;
                 this.printMessage('system', `🐞 Modo debug ${this.debugMode ? 'ativado' : 'desativado'}`);
-                return;
+                break;
 
             case '@exit':
                 this.printMessage('system', '👋 Saindo... Até a próxima!');
                 this.rl.close();
                 process.exit(0);
-                return;
+                break;
 
             default:
                 this.printMessage('warning', '⚠️ Comando desconhecido');
                 this.showHelp();
-                return;
+                break;
         }
     } catch (error) {
         this.printMessage('error', `❌ Erro ao processar comando: ${error.message}`);
